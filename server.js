@@ -1,37 +1,40 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const multer = require('multer');
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+const upload = multer();
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/', (_req, res) => {
   res.send('OK');
 });
 
-app.post('/render-newspaper', async (req, res) => {
+app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
   let browser;
 
   try {
     const {
       templateUrl,
-      photoUrl,
-      x = 150,
-      y = 220,
-      width = 900,
-      height = 1100,
-      sepia = true,
-      grayscale = false,
-      outputWidth = 1200,
-      outputHeight = 1600,
-      borderRadius = 0,
-      rotate = 0,
+      x = 120,
+      y = 210,
+      width = 700,
+      height = 760,
+      sepia = 'true',
+      outputWidth = 1024,
+      outputHeight = 1448,
     } = req.body;
 
-    if (!templateUrl || !photoUrl) {
-      return res.status(400).json({
-        error: 'templateUrl and photoUrl are required',
-      });
+    if (!templateUrl) {
+      return res.status(400).json({ error: 'templateUrl is required' });
     }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'photo file is required' });
+    }
+
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const photoDataUrl = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
 
     browser = await puppeteer.launch({
       headless: 'new',
@@ -40,15 +43,12 @@ app.post('/render-newspaper', async (req, res) => {
 
     const page = await browser.newPage();
     await page.setViewport({
-      width: outputWidth,
-      height: outputHeight,
+      width: Number(outputWidth),
+      height: Number(outputHeight),
       deviceScaleFactor: 1,
     });
 
-    const filterParts = [];
-    if (sepia) filterParts.push('sepia(100%)');
-    if (grayscale) filterParts.push('grayscale(100%)');
-    const cssFilter = filterParts.length ? filterParts.join(' ') : 'none';
+    const filter = sepia === 'true' ? 'sepia(100%)' : 'none';
 
     const html = `
       <!doctype html>
@@ -59,19 +59,17 @@ app.post('/render-newspaper', async (req, res) => {
             html, body {
               margin: 0;
               padding: 0;
-              width: ${outputWidth}px;
-              height: ${outputHeight}px;
+              width: ${Number(outputWidth)}px;
+              height: ${Number(outputHeight)}px;
               overflow: hidden;
               background: white;
             }
-
             .stage {
               position: relative;
-              width: ${outputWidth}px;
-              height: ${outputHeight}px;
+              width: ${Number(outputWidth)}px;
+              height: ${Number(outputHeight)}px;
               overflow: hidden;
             }
-
             .template {
               position: absolute;
               inset: 0;
@@ -79,25 +77,21 @@ app.post('/render-newspaper', async (req, res) => {
               height: 100%;
               object-fit: cover;
             }
-
             .photo {
               position: absolute;
-              left: ${x}px;
-              top: ${y}px;
-              width: ${width}px;
-              height: ${height}px;
+              left: ${Number(x)}px;
+              top: ${Number(y)}px;
+              width: ${Number(width)}px;
+              height: ${Number(height)}px;
               object-fit: cover;
-              filter: ${cssFilter};
-              border-radius: ${borderRadius}px;
-              transform: rotate(${rotate}deg);
-              transform-origin: center center;
+              filter: ${filter};
             }
           </style>
         </head>
         <body>
           <div class="stage">
             <img class="template" src="${templateUrl}" />
-            <img class="photo" src="${photoUrl}" />
+            <img class="photo" src="${photoDataUrl}" />
           </div>
         </body>
       </html>
@@ -111,17 +105,12 @@ app.post('/render-newspaper', async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Content-Disposition', 'inline; filename="newspaper.jpg"');
     res.send(buffer);
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      error: error.message || 'Render failed',
-    });
+    res.status(500).json({ error: error.message || 'Render failed' });
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 });
 
