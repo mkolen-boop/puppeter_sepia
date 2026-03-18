@@ -4,6 +4,7 @@ const multer = require('multer');
 
 const app = express();
 const upload = multer();
+
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/', (_req, res) => {
@@ -18,9 +19,10 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       templateUrl,
       x = 120,
       y = 210,
-      width = 700,
-      height = 760,
+      imgWidth = 700,
+      imgHeight = 760,
       sepia = 'true',
+      overlay = 1,
       outputWidth = 1024,
       outputHeight = 1448,
     } = req.body;
@@ -33,6 +35,27 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       return res.status(400).json({ error: 'photo file is required' });
     }
 
+    const safeX = Number(x);
+    const safeY = Number(y);
+    const safeImgWidth = Number(imgWidth);
+    const safeImgHeight = Number(imgHeight);
+    const safeOutputWidth = Number(outputWidth);
+    const safeOutputHeight = Number(outputHeight);
+    const safeOverlay = Math.max(0, Math.min(1, Number(overlay)));
+    const useSepia = String(sepia) === 'true';
+
+    if (
+      Number.isNaN(safeX) ||
+      Number.isNaN(safeY) ||
+      Number.isNaN(safeImgWidth) ||
+      Number.isNaN(safeImgHeight) ||
+      Number.isNaN(safeOutputWidth) ||
+      Number.isNaN(safeOutputHeight) ||
+      Number.isNaN(safeOverlay)
+    ) {
+      return res.status(400).json({ error: 'Invalid numeric parameters' });
+    }
+
     const mimeType = req.file.mimetype || 'image/jpeg';
     const photoDataUrl = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
 
@@ -42,13 +65,14 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
     });
 
     const page = await browser.newPage();
+
     await page.setViewport({
-      width: Number(outputWidth),
-      height: Number(outputHeight),
+      width: safeOutputWidth,
+      height: safeOutputHeight,
       deviceScaleFactor: 1,
     });
 
-    const filter = sepia === 'true' ? 'sepia(100%)' : 'none';
+    const filter = useSepia ? 'sepia(100%)' : 'none';
 
     const html = `
       <!doctype html>
@@ -59,17 +83,19 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
             html, body {
               margin: 0;
               padding: 0;
-              width: ${Number(outputWidth)}px;
-              height: ${Number(outputHeight)}px;
+              width: ${safeOutputWidth}px;
+              height: ${safeOutputHeight}px;
               overflow: hidden;
               background: white;
             }
+
             .stage {
               position: relative;
-              width: ${Number(outputWidth)}px;
-              height: ${Number(outputHeight)}px;
+              width: ${safeOutputWidth}px;
+              height: ${safeOutputHeight}px;
               overflow: hidden;
             }
+
             .template {
               position: absolute;
               inset: 0;
@@ -77,14 +103,16 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
               height: 100%;
               object-fit: cover;
             }
+
             .photo {
               position: absolute;
-              left: ${Number(x)}px;
-              top: ${Number(y)}px;
-              width: ${Number(width)}px;
-              height: ${Number(height)}px;
-              object-fit: cover;
+              left: ${safeX}px;
+              top: ${safeY}px;
+              width: ${safeImgWidth}px;
+              height: ${safeImgHeight}px;
+              object-fit: contain;
               filter: ${filter};
+              opacity: ${safeOverlay};
             }
           </style>
         </head>
@@ -110,7 +138,9 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
     console.error(error);
     res.status(500).json({ error: error.message || 'Render failed' });
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 });
 
