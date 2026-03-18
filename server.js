@@ -1,39 +1,40 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const multer = require('multer');
 
 const app = express();
+const upload = multer();
+
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/', (_req, res) => {
   res.send('OK');
 });
 
-app.post('/render-newspaper', async (req, res) => {
+app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
   let browser;
 
   try {
     const {
       templateUrl,
-      photoUrl,
       x = 120,
       y = 210,
       imgWidth = 700,
       imgHeight = 760,
-      sepia = true,
+      sepia = 'true',
       overlay = 1,
       outputWidth = 1024,
       outputHeight = 1448,
-      anchorX = 'left',
-      anchorY = 'top',
-      rotate = 0,
+      anchorX = 'left',   // left | center | right
+      anchorY = 'top',    // top | center | bottom
     } = req.body;
 
     if (!templateUrl) {
       return res.status(400).json({ error: 'templateUrl is required' });
     }
 
-    if (!photoUrl) {
-      return res.status(400).json({ error: 'photoUrl is required' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'photo file is required' });
     }
 
     const safeX = Number(x);
@@ -43,7 +44,7 @@ app.post('/render-newspaper', async (req, res) => {
     const safeOutputWidth = Number(outputWidth);
     const safeOutputHeight = Number(outputHeight);
     const safeOverlay = Math.max(0, Math.min(1, Number(overlay)));
-    const safeRotate = Number(rotate);
+    const useSepia = String(sepia) === 'true';
 
     if (
       Number.isNaN(safeX) ||
@@ -52,20 +53,31 @@ app.post('/render-newspaper', async (req, res) => {
       Number.isNaN(safeImgHeight) ||
       Number.isNaN(safeOutputWidth) ||
       Number.isNaN(safeOutputHeight) ||
-      Number.isNaN(safeOverlay) ||
-      Number.isNaN(safeRotate)
+      Number.isNaN(safeOverlay)
     ) {
       return res.status(400).json({ error: 'Invalid numeric parameters' });
     }
 
-    const allowedAnchorX = ['left', 'center', 'right'];
-    const allowedAnchorY = ['top', 'center', 'bottom'];
+    const anchorMapX = {
+      left: '0%',
+      center: '50%',
+      right: '100%',
+    };
 
-    const safeAnchorX = allowedAnchorX.includes(String(anchorX)) ? String(anchorX) : 'left';
-    const safeAnchorY = allowedAnchorY.includes(String(anchorY)) ? String(anchorY) : 'top';
+    const anchorMapY = {
+      top: '0%',
+      center: '50%',
+      bottom: '100%',
+    };
 
-    const useSepia = String(sepia) === 'true' || sepia === true;
-    const filter = useSepia ? 'sepia(100%)' : 'none';
+    const safeAnchorX = anchorMapX[String(anchorX)] ? String(anchorX) : 'left';
+    const safeAnchorY = anchorMapY[String(anchorY)] ? String(anchorY) : 'top';
+
+    const translateX = anchorMapX[safeAnchorX];
+    const translateY = anchorMapY[safeAnchorY];
+
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const photoDataUrl = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
 
     browser = await puppeteer.launch({
       headless: 'new',
@@ -73,11 +85,14 @@ app.post('/render-newspaper', async (req, res) => {
     });
 
     const page = await browser.newPage();
+
     await page.setViewport({
       width: safeOutputWidth,
       height: safeOutputHeight,
       deviceScaleFactor: 1,
     });
+
+    const filter = useSepia ? 'sepia(100%)' : 'none';
 
     const html = `
       <!doctype html>
@@ -115,17 +130,17 @@ app.post('/render-newspaper', async (req, res) => {
               top: ${safeY}px;
               width: ${safeImgWidth}px;
               height: ${safeImgHeight}px;
-              opacity: ${safeOverlay};
-              filter: ${filter};
+              transform: translate(-${translateX}, -${translateY});
               transform-origin: ${safeAnchorX} ${safeAnchorY};
-              transform: rotate(${safeRotate}deg);
+              filter: ${filter};
+              opacity: ${safeOverlay};
             }
           </style>
         </head>
         <body>
           <div class="stage">
             <img class="template" src="${templateUrl}" />
-            <img class="photo" src="${photoUrl}" />
+            <img class="photo" src="${photoDataUrl}" />
           </div>
         </body>
       </html>
