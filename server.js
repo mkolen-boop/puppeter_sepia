@@ -92,7 +92,15 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       deviceScaleFactor: 1,
     });
 
-    const filter = useSepia ? 'sepia(100%)' : 'none';
+    const useSepia = String(sepia) === 'true';
+    const useGrayscale = String(req.body.grayscale) === 'true';
+    
+    let filter = '';
+
+    if (useSepia) filter += 'sepia(100%) ';
+    if (useGrayscale) filter += 'grayscale(100%)';
+
+    if (!filter) filter = 'none';
 
     const html = `
       <!doctype html>
