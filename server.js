@@ -22,11 +22,12 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       imgWidth = 700,
       imgHeight = 760,
       sepia = 'true',
+      grayscale = 'false',
       overlay = 1,
       outputWidth = 1024,
       outputHeight = 1448,
-      anchorX = 'left',   // left | center | right
-      anchorY = 'top',    // top | center | bottom
+      anchorX = 'left',
+      anchorY = 'top',
     } = req.body;
 
     if (!templateUrl) {
@@ -44,7 +45,9 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
     const safeOutputWidth = Number(outputWidth);
     const safeOutputHeight = Number(outputHeight);
     const safeOverlay = Math.max(0, Math.min(1, Number(overlay)));
+
     const useSepia = String(sepia) === 'true';
+    const useGrayscale = String(grayscale) === 'true';
 
     if (
       Number.isNaN(safeX) ||
@@ -92,15 +95,10 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       deviceScaleFactor: 1,
     });
 
-    const useSepia = String(sepia) === 'true';
-    const useGrayscale = String(req.body.grayscale) === 'true';
-    
-    let filter = '';
-
-    if (useSepia) filter += 'sepia(100%) ';
-    if (useGrayscale) filter += 'grayscale(100%)';
-
-    if (!filter) filter = 'none';
+    const filterParts = [];
+    if (useSepia) filterParts.push('sepia(100%)');
+    if (useGrayscale) filterParts.push('grayscale(100%)');
+    const filter = filterParts.length ? filterParts.join(' ') : 'none';
 
     const html = `
       <!doctype html>
