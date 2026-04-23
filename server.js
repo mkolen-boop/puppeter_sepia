@@ -23,6 +23,9 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       imgHeight = 760,
       sepia = 'true',
       grayscale = 'false',
+      contrast = 100,
+      brightness = 100,
+      saturate = 100,
       overlay = 1,
       outputWidth = 1024,
       outputHeight = 1448,
@@ -45,6 +48,9 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
     const safeOutputWidth = Number(outputWidth);
     const safeOutputHeight = Number(outputHeight);
     const safeOverlay = Math.max(0, Math.min(1, Number(overlay)));
+    const safeContrast = Number(contrast);
+    const safeBrightness = Number(brightness);
+    const safeSaturate = Number(saturate);
 
     const useSepia = String(sepia) === 'true';
     const useGrayscale = String(grayscale) === 'true';
@@ -56,10 +62,17 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
       Number.isNaN(safeImgHeight) ||
       Number.isNaN(safeOutputWidth) ||
       Number.isNaN(safeOutputHeight) ||
-      Number.isNaN(safeOverlay)
+      Number.isNaN(safeOverlay) ||
+      Number.isNaN(safeContrast) ||
+      Number.isNaN(safeBrightness) ||
+      Number.isNaN(safeSaturate)
     ) {
       return res.status(400).json({ error: 'Invalid numeric parameters' });
     }
+
+    const normalizedContrast = Math.max(0, safeContrast);
+    const normalizedBrightness = Math.max(0, safeBrightness);
+    const normalizedSaturate = Math.max(0, safeSaturate);
 
     const anchorMapX = {
       left: '0%',
@@ -98,6 +111,9 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
     const filterParts = [];
     if (useSepia) filterParts.push('sepia(100%)');
     if (useGrayscale) filterParts.push('grayscale(100%)');
+    if (normalizedContrast !== 100) filterParts.push(`contrast(${normalizedContrast}%)`);
+    if (normalizedBrightness !== 100) filterParts.push(`brightness(${normalizedBrightness}%)`);
+    if (normalizedSaturate !== 100) filterParts.push(`saturate(${normalizedSaturate}%)`);
     const filter = filterParts.length ? filterParts.join(' ') : 'none';
 
     const html = `
