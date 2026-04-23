@@ -187,6 +187,82 @@ app.post('/render-newspaper', upload.single('photo'), async (req, res) => {
   }
 });
 
+app.post('/process-photo', upload.single('photo'), async (req, res) => {
+  let browser;
+
+  try {
+    const {
+      contrast = 120,
+      brightness = 100,
+      saturate = 100,
+      sepia = 'false',
+      grayscale = 'false',
+      grain = 0.15,
+    } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'photo file is required' });
+    }
+
+    const photoDataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const page = await browser.newPage();
+
+    await page.setViewport({
+      width: 1200,
+      height: 1600,
+    });
+
+    const filter = `
+      ${sepia === 'true' ? 'sepia(100%)' : ''}
+      ${grayscale === 'true' ? 'grayscale(100%)' : ''}
+      contrast(${contrast}%)
+      brightness(${brightness}%)
+      saturate(${saturate}%)
+    `;
+
+    const html = `
+      <html>
+        <body style="margin:0">
+          <div style="position:relative;width:100%;height:100%">
+            <img src="${photoDataUrl}" style="width:100%;height:100%;object-fit:cover;filter:${filter}" />
+            <div style="
+              position:absolute;
+              inset:0;
+              opacity:${grain};
+              mix-blend-mode:overlay;
+              background-image:url('data:image/svg+xml;utf8,
+                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+                  <filter id="n">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.8"/>
+                  </filter>
+                  <rect width="100%" height="100%" filter="url(%23n)"/>
+                </svg>');
+            "></div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    await page.setContent(html);
+
+    const buffer = await page.screenshot({ type: 'jpeg', quality: 90 });
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(buffer);
+
+  } catch (e) {
+    res.status(500).json({ error: 'failed' });
+  } finally {
+    if (browser) await browser.close();
+  }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
