@@ -213,10 +213,25 @@ app.post('/process-photo', upload.single('photo'), async (req, res) => {
 
     const page = await browser.newPage();
 
+    const dimensions = await page.evaluate(async (src) => {
+  const img = new Image();
+  img.src = src;
+
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+  });
+
+  return {
+    width: img.naturalWidth,
+    height: img.naturalHeight,
+  };
+}, photoDataUrl);
+
     await page.setViewport({
-      width: 1200,
-      height: 1600,
-    });
+  width: dimensions.width,
+  height: dimensions.height,
+});
 
     const filter = `
       ${sepia === 'true' ? 'sepia(100%)' : ''}
@@ -230,7 +245,7 @@ app.post('/process-photo', upload.single('photo'), async (req, res) => {
       <html>
         <body style="margin:0">
           <div style="position:relative;width:100%;height:100%">
-            <img src="${photoDataUrl}" style="width:100%;height:100%;object-fit:cover;filter:${filter}" />
+            <img src="${photoDataUrl}" style="width:100%;height:100%;filter:${filter}" />
             <div style="
               position:absolute;
               inset:0;
@@ -249,7 +264,7 @@ app.post('/process-photo', upload.single('photo'), async (req, res) => {
       </html>
     `;
 
-    await page.setContent(html);
+    await page.setContent(html, { waitUntil: 'networkidle0' });
 
     const buffer = await page.screenshot({ type: 'jpeg', quality: 90 });
 
